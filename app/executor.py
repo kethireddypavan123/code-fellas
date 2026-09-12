@@ -230,6 +230,14 @@ class Executor:
         )
         self._db.commit()
 
+    def pending_reviews(self) -> list[dict[str, Any]]:
+        """Rows held for human decision — used to rehydrate the queue on boot."""
+        assert self._db is not None
+        rows = self._db.execute(
+            "SELECT request_id, plan_json, verdict, created_ms FROM executions WHERE status = 'review' ORDER BY created_ms"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
     def mark_reviewed(self, request_id: str, outcome: str) -> bool:
         """Close out a pending review row: status -> 'approved' | 'rejected'."""
         assert self._db is not None

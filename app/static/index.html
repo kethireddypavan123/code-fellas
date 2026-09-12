@@ -77,6 +77,9 @@
   .st.executed{background:#05392b; color:var(--ok)} .st.blocked{background:#3d0d0d; color:var(--block)}
   .st.review{background:#3d2506; color:var(--review)} .st.already{background:#1e2a52; color:var(--blue)}
   .tx .amt{margin-left:auto; font-variant-numeric:tabular-nums; color:var(--txt); font-weight:600}
+  .tx .rev{margin-left:8px; padding:3px 10px; font-size:.64rem}
+  .tx .rev.ok{background:#05392b; border-color:#34d39966; color:var(--ok)}
+  .tx .rev.no{background:#3d0d0d; border-color:#f8717166; color:var(--block)}
 
   .tx .who{color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:34%}
   .toast{position:fixed; bottom:22px; right:22px; background:#05392b; border:1px solid var(--ok); color:#a7f3d0;
@@ -245,6 +248,19 @@ function renderVerdict(j, label){
   if(v==="REVIEW") el("reviewActions").style.display="flex";
 }
 
+async function decideRow(reqId, d, btn){
+  if(btn){ btn.disabled=true; }
+  try{
+    const r=await fetch("/review/"+reqId,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({decision:d,reviewer:"console-judge"})});
+    const j=await r.json();
+    if(r.ok && j.execution){ toast("review "+d+" → "+j.execution.status+" · "+(j.execution.detail||"")); }
+    else { toast(j.detail || ("review "+d+" failed"), true); if(btn) btn.disabled=false; return; }
+    if(LAST && LAST.request_id===reqId) el("reviewActions").style.display="none";
+    refresh();
+  }catch(e){ toast("decision failed", true); if(btn) btn.disabled=false; }
+}
+
 async function decide(d){
   if(!LAST||!LAST.request_id) return;
   try{
@@ -280,8 +296,12 @@ async function refresh(){
     el("ledger").innerHTML=L.recent.map(t=>{
       let st=t.status; if(t.rolled_back) st="rolled back";
       const cls=st==="executed"?"executed":st==="blocked"?"blocked":st==="rolled back"?"already":"review";
+      const revBtns = (st==="review" && t.amount!=null && t.amount>0)
+        ? "<button class='rev ok' onclick='decideRow(\""+t.request_id+"\",\"approve\",this)'>✓ approve</button>"+
+          "<button class='rev no' onclick='decideRow(\""+t.request_id+"\",\"reject\",this)'>✕ reject</button>"
+        : "";
       return "<div class='tx'><span class='st "+cls+"'>"+st+"</span><span class='who'>"+(t.beneficiary||t.request_id)+"</span>"+
-        "<span class='amt'>"+(t.amount!=null? "₹"+Number(t.amount).toLocaleString("en-IN"):"—")+"</span>"+
+        "<span class='amt'>"+(t.amount!=null? "₹"+Number(t.amount).toLocaleString("en-IN"):"—")+"</span>"+revBtns+
         "</div>";
     }).join("") || "<div class='hint'>no transactions yet</div>";
   }catch(e){ el("svc").textContent="unreachable"; el("dot").style.background="var(--block)"; }

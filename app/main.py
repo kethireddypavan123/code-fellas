@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import io
+import json
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -47,6 +48,14 @@ _review_queue: dict[str, dict[str, Any]] = {}
 async def lifespan(app: FastAPI):
     await analyzer.start()
     executor.connect()
+    # Rehydrate the review queue so payments held for approval survive restarts
+    for row in executor.pending_reviews():
+        _review_queue[row["request_id"]] = {
+            "plan": json.loads(row["plan_json"]),
+            "verdict": {"verdict": row["verdict"]},
+            "proof_id": "",
+            "received_ms": row["created_ms"],
+        }
     SERVICE_UP.set(1)
     yield
     SERVICE_UP.set(0)
