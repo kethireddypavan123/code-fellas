@@ -22,8 +22,11 @@ _MONEY = re.compile(
 # Unit-suffixed amounts without a currency prefix ("pay 8k", "2.5 lakh")
 _MONEY_UNITED = re.compile(r"\b(\d+(?:\.\d+)?)\s*(k|lakh|lac|cr|crore|crores)\b", re.I)
 _ACCOUNT = re.compile(r"(?:a/c|acc(?:oun)?t?\.?|acct)\s*(?:no\.?\s*)?[:#]?\s*([0-9]{6,18})")
+# Stopwords avoid matching "vendor invoice:" / "pay to account" as a person/org name
 _BENEFICIARY = re.compile(
-    r"(?:to|beneficiary|payee|vendor)\s+(?:name\s+)?[:\-]?\s*([A-Za-z][A-Za-z0-9&.\- ]{2,40})"
+    r"(?:to|beneficiary|payee|vendor)\s+(?:name\s+)?[:\-]?\s*"
+    r"(?!(?:invoice|bill|payment|statement|fees?|charges|account|settle|the)\b)"
+    r"([A-Za-z][A-Za-z0-9&.\- ]{2,40})"
 )
 _DUE = re.compile(
     r"(?:due|pay by|deadline)\s*(?:date)?\s*[:\-]?\s*"
