@@ -6,6 +6,7 @@ hackathon_extract/
 
 # Runtime state (SQLite ledger) — recreated on boot
 data/
+server.log
 
 # Python
 __pycache__/

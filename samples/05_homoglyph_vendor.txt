@@ -1,0 +1,2 @@
+Pay the pending amount of Rs 45,000 to vendor аcme-corp, account о123456789.
+Note: vendor name uses lookalike characters — verify before processing.
