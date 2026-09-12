@@ -67,7 +67,7 @@
   .planline{margin-top:9px; font-size:.82rem; background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:9px 12px}
   .planline b{color:var(--teal)}
   /* right column */
-  .kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:16px}
+  .kpis{display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px}
   .kpi{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; text-align:center}
   .kpi b{display:block; font-size:1.25rem; color:var(--teal)} .kpi span{font-size:.62rem; color:var(--dim); text-transform:uppercase; letter-spacing:.5px}
   .acct{display:flex; justify-content:space-between; padding:7px 10px; background:var(--card2); border:1px solid var(--line); border-radius:9px; margin-bottom:6px; font-size:.8rem}
@@ -153,6 +153,7 @@
         <div class="kpi"><b id="k-exec">–</b><span>executed</span></div>
         <div class="kpi"><b id="k-block">–</b><span>blocked</span></div>
         <div class="kpi"><b id="k-rev">–</b><span>in review</span></div>
+        <div class="kpi"><b id="k-replay">–</b><span>replays stopped</span></div>
       </div>
       <div class="card">
         <h2>Accounts (live)</h2>
@@ -258,6 +259,7 @@ async function refresh(){
     el("svc").textContent=h.status==="ok"? (h.degraded_llm? "online · deterministic mode":"online · LLM mode"):"down";
     const s=(await (await fetch("/stats")).json()).executor;
     el("k-exec").textContent=s.executed; el("k-block").textContent=s.blocked; el("k-rev").textContent=s.review;
+    if(s.replays_blocked!=null) el("k-replay").textContent=s.replays_blocked;
     const L=await (await fetch("/ledger")).json();
     el("accounts").innerHTML=L.accounts.map(a=>
       "<div class='acct'><span>"+a.owner+" <span style='color:var(--dim);font-size:.68rem'>("+a.account_id+")</span></span><b>₹"+Number(a.balance).toLocaleString("en-IN")+"</b></div>").join("");

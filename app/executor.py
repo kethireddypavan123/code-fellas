@@ -70,6 +70,11 @@ class Executor:
                 created_ms INTEGER NOT NULL,
                 proof_json TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS replay_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                request_id TEXT NOT NULL,
+                replayed_ms INTEGER NOT NULL
+            );
             """
         )
         self._db.commit()
@@ -97,6 +102,11 @@ class Executor:
                 (request_id,),
             ).fetchone()
             if row:
+                self._db.execute(
+                    "INSERT INTO replay_log (request_id, replayed_ms) VALUES (?, strftime('%s','now') * 1000)",
+                    (request_id,),
+                )
+                self._db.commit()
                 return ExecutionResult(
                     execution_id=row["execution_id"],
                     status="already_executed" if row["status"] == "executed" else row["status"],
@@ -248,10 +258,12 @@ class Executor:
         executed = self._db.execute("SELECT COUNT(*) c FROM executions WHERE status='executed' AND rolled_back=0").fetchone()["c"]
         blocked = self._db.execute("SELECT COUNT(*) c FROM executions WHERE status='blocked'").fetchone()["c"]
         review = self._db.execute("SELECT COUNT(*) c FROM executions WHERE status='review'").fetchone()["c"]
+        replays = self._db.execute("SELECT COUNT(*) c FROM replay_log").fetchone()["c"]
         return {
             "executed": executed,
             "blocked": blocked,
             "review": review,
+            "replays_blocked": replays,
             "ops_main_balance": self._balance("ops-main"),
         }
 

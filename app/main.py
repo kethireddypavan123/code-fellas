@@ -10,8 +10,8 @@ Run: uvicorn app.main:app --reload   (see README for the 3-command flow)
 """
 from __future__ import annotations
 
+import hashlib
 import time
-import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
@@ -81,9 +81,18 @@ def metrics() -> Response:
 
 @app.post("/process", response_model=ProcessResponse)
 async def process(doc: DocIn) -> ProcessResponse:
-    """End-to-end pipeline: ingest → analyze → guard → proof → execute."""
+    """End-to-end pipeline: ingest → analyze → guard → proof → execute.
+
+    Idempotency: an explicit request_id is honored as-is; when absent the id is
+    derived from the document content (sha256) so re-submitting the same
+    document can never double-spend.
+    """
     t0 = time.perf_counter()
-    request_id = doc.request_id or f"req_{uuid.uuid4().hex[:12]}"
+    if doc.request_id:
+        request_id = doc.request_id
+    else:
+        content_digest = hashlib.sha256(f"{doc.channel}|{' '.join(doc.text.split())}".encode()).hexdigest()
+        request_id = f"doc_{content_digest[:16]}"
 
     # Layer 1 — ingestion (raw preserved for defence-in-depth scans)
     ing = ingest(doc)
