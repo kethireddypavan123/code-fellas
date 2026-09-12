@@ -220,6 +220,16 @@ class Executor:
         )
         self._db.commit()
 
+    def mark_reviewed(self, request_id: str, outcome: str) -> bool:
+        """Close out a pending review row: status -> 'approved' | 'rejected'."""
+        assert self._db is not None
+        cur = self._db.execute(
+            "UPDATE executions SET status = ? WHERE request_id = ? AND status = 'review'",
+            (outcome, request_id),
+        )
+        self._db.commit()
+        return cur.rowcount > 0
+
     def save_proof(self, proof_json: str, proof_id: str, request_id: str, chain_hash: str) -> None:
         assert self._db is not None
         self._db.execute(
@@ -244,6 +254,22 @@ class Executor:
             "review": review,
             "ops_main_balance": self._balance("ops-main"),
         }
+
+    def accounts(self) -> list[dict[str, Any]]:
+        assert self._db is not None
+        rows = self._db.execute(
+            "SELECT account_id, owner, balance FROM accounts ORDER BY balance DESC LIMIT 8"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def recent(self, limit: int = 12) -> list[dict[str, Any]]:
+        assert self._db is not None
+        rows = self._db.execute(
+            "SELECT execution_id, request_id, status, amount, beneficiary, created_ms, rolled_back "
+            "FROM executions ORDER BY created_ms DESC, rowid DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def close(self) -> None:
         if self._db:

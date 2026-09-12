@@ -179,12 +179,22 @@ def decide_review(request_id: str, decision: ReviewDecision) -> dict[str, Any]:
         from .schemas import ActionPlan
 
         plan = ActionPlan(**item["plan"])
-        res = executor.execute(request_id, plan, Verdict.OK)
+        if not plan.amount:
+            raise HTTPException(
+                status_code=400,
+                detail="cannot approve a payment with no amount — reject it instead",
+            )
+        # Close the review row, then execute under a derived idempotency key so
+        # the approve action is itself replay-safe and cannot be swallowed by
+        # the review noop row.
+        executor.mark_reviewed(request_id, "approved")
+        res = executor.execute(f"{request_id}#approved", plan, Verdict.OK)
         EXECUTIONS.labels(status=res.status).inc()
         return {"request_id": request_id, "decision": "approved", "execution": {
             "status": res.status, "detail": res.detail, "execution_id": res.execution_id
         }}
-    res = executor.execute(request_id, ActionPlan(intent="unknown"), Verdict.BLOCK)
+    executor.mark_reviewed(request_id, "rejected")
+    res = executor.execute(f"{request_id}#rejected", ActionPlan(intent="unknown"), Verdict.BLOCK)
     return {"request_id": request_id, "decision": "rejected", "execution": {
         "status": res.status, "detail": res.detail
     }}
@@ -199,3 +209,10 @@ def rollback(execution_id: str) -> dict[str, Any]:
 @app.get("/stats")
 def stats() -> dict[str, Any]:
     return {"executor": executor.stats(), "pending_reviews": len(_review_queue)}
+
+
+@app.get("/ledger")
+def ledger() -> dict[str, Any]:
+    """Account balances + recent executions for the live dashboard."""
+    return {"accounts": executor.accounts(), "recent": executor.recent(12),
+            "summary": executor.stats()}
