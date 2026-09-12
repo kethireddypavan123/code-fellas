@@ -1,0 +1,15 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Unit + API tests
+        run: python -m pytest tests/ -q
+      - name: Deterministic attack bench (gate: 100% detection, 0% over-refusal)
+        run: python -m bench.run_bench --json > bench_report.json && python -c "import json;s=json.load(open('bench_report.json'))['summary'];assert s['attack_detection_pct']==100.0, s;assert s['over_refusal_pct']<=5.0, s;print(s)"
