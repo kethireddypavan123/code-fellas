@@ -37,6 +37,7 @@ from .metrics import (
     VERIFY_LATENCY,
 )
 from .proofs import make_proof, verify_proof
+from .seed_demo import seed_if_empty
 from .schemas import DocIn, ProcessResponse, ReviewDecision, Verdict, VerifyRequest
 
 analyzer = Analyzer()
@@ -48,6 +49,8 @@ _review_queue: dict[str, dict[str, Any]] = {}
 async def lifespan(app: FastAPI):
     await analyzer.start()
     executor.connect()
+    if seed_if_empty(executor):
+        print("[seed] demo ledger populated (SEED_DEMO=0 to disable)")
     # Rehydrate the review queue so payments held for approval survive restarts
     for row in executor.pending_reviews():
         _review_queue[row["request_id"]] = {
