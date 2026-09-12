@@ -1,0 +1,25 @@
+# Freebuff workspace files
+.freebuff/
+
+# Extracted reference material (rules/deck) — not part of the submission
+hackathon_extract/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Environment / secrets — RULES: no secrets in repository, history or logs
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
