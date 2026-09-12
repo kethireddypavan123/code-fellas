@@ -4,6 +4,9 @@
 # Extracted reference material (rules/deck) — not part of the submission
 hackathon_extract/
 
+# Runtime state (SQLite ledger) — recreated on boot
+data/
+
 # Python
 __pycache__/
 *.pyc
