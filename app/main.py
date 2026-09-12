@@ -13,6 +13,7 @@ from __future__ import annotations
 import time
 import uuid
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import FastAPI, HTTPException, Response
@@ -52,6 +53,14 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, version=settings.version, lifespan=lifespan)
+
+_INDEX = Path(__file__).parent / "static" / "index.html"
+
+
+@app.get("/", include_in_schema=False)
+def index() -> Response:
+    """Judge-facing live dashboard (self-contained, no CDN — works offline)."""
+    return Response(content=_INDEX.read_text(encoding="utf-8"), media_type="text/html")
 
 
 @app.get("/healthz")
