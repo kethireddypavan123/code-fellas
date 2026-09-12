@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: code-fellas-fs2605
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: GEMINI_API_KEY
+        sync: false   # optional; set manually in the dashboard to enable LLM mode
