@@ -11,12 +11,14 @@ Run: uvicorn app.main:app --reload   (see README for the 3-command flow)
 from __future__ import annotations
 
 import hashlib
+import io
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Response
+import pypdf
+from fastapi import FastAPI, File, HTTPException, Response, UploadFile
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .analyzer import Analyzer
@@ -79,15 +81,35 @@ def metrics() -> Response:
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
+@app.post("/process-pdf", response_model=ProcessResponse)
+async def process_pdf(file: UploadFile = File(...)) -> ProcessResponse:
+    """PDF ingest: extract text, then run the identical guard pipeline."""
+    t0 = time.perf_counter()
+    if not (file.filename or "").lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="only .pdf files are accepted")
+    raw = await file.read()
+    if len(raw) > 5_000_000:
+        raise HTTPException(status_code=413, detail="PDF too large (max 5 MB)")
+    try:
+        reader = pypdf.PdfReader(io.BytesIO(raw))
+        text = "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"could not read PDF: {exc}")
+    if not text:
+        raise HTTPException(status_code=422, detail="no extractable text in PDF (scanned image PDFs need OCR)")
+    return await _run_pipeline(
+        DocIn(channel="pdf", text=text[:200_000], source=f"pdf:{file.filename}"), t0
+    )
+
+
 @app.post("/process", response_model=ProcessResponse)
 async def process(doc: DocIn) -> ProcessResponse:
-    """End-to-end pipeline: ingest → analyze → guard → proof → execute.
+    """End-to-end pipeline for raw text. Idempotent by content digest."""
+    return await _run_pipeline(doc, time.perf_counter())
 
-    Idempotency: an explicit request_id is honored as-is; when absent the id is
-    derived from the document content (sha256) so re-submitting the same
-    document can never double-spend.
-    """
-    t0 = time.perf_counter()
+
+async def _run_pipeline(doc: DocIn, t0: float) -> ProcessResponse:
+    """Shared pipeline: ingest → analyze → guard → proof → execute."""
     if doc.request_id:
         request_id = doc.request_id
     else:

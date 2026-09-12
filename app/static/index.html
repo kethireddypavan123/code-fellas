@@ -77,7 +77,7 @@
   .st.executed{background:#05392b; color:var(--ok)} .st.blocked{background:#3d0d0d; color:var(--block)}
   .st.review{background:#3d2506; color:var(--review)} .st.already{background:#1e2a52; color:var(--blue)}
   .tx .amt{margin-left:auto; font-variant-numeric:tabular-nums; color:var(--txt); font-weight:600}
-  .tx .rb{margin-left:6px; padding:3px 9px; font-size:.64rem; background:#3d2506; border-color:#fbbf2455; color:var(--review)}
+
   .tx .who{color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:34%}
   .toast{position:fixed; bottom:22px; right:22px; background:#05392b; border:1px solid var(--ok); color:#a7f3d0;
     padding:11px 17px; border-radius:11px; font-size:.83rem; display:none; box-shadow:0 10px 30px #0009; z-index:9}
@@ -111,14 +111,11 @@
           <button onclick="loadSample('query')">💬 Simple query</button>
         </div>
         <div class="row">
-          <select id="channel">
-            <option value="invoice">channel: invoice</option>
-            <option value="email">channel: email</option>
-            <option value="memo">channel: memo</option>
-            <option value="pdf">channel: pdf</option>
-          </select>
+          <input type="file" id="pdffile" accept="application/pdf,.pdf" style="display:none" onchange="submitPdf(this.files[0])">
+          <button onclick="document.getElementById('pdffile').click()">📄 Upload PDF</button>
           <button class="go" id="go" onclick="submit()">⚡ Run through guard</button>
         </div>
+        <div class="hint">PDFs: text is extracted, then the same guard applies — attacks blocked, clean small invoices execute. (Scanned/image PDFs need OCR — not supported.)</div>
       </div>
 
       <div class="card">
@@ -179,7 +176,24 @@ const SAMPLES = {
 };
 let LAST = null, BUSY = false;
 
-function loadSample(k){ document.getElementById("doc").value = SAMPLES[k].t; document.getElementById("channel").value = SAMPLES[k].ch; }
+function loadSample(k){ document.getElementById("doc").value = SAMPLES[k].t; }
+
+async function submitPdf(f){
+  if(!f) return;
+  if(BUSY){ toast("busy — wait for the current run", true); return; }
+  BUSY=true; const btn=el("go"); btn.disabled=true; btn.textContent="guarding…";
+  resetStages(); el("verdict").style.display="none"; el("reviewActions").style.display="none";
+  lightStage(1,"extracting PDF text…");
+  const fd=new FormData(); fd.append("file", f);
+  try{
+    const r=await fetch("/process-pdf",{method:"POST",body:fd});
+    if(!r.ok){ const e=await r.json().catch(()=>({detail:r.statusText})); throw new Error(e.detail||("HTTP "+r.status)); }
+    const j=await r.json(); LAST=j;
+    renderVerdict(j, "📄 "+f.name);
+  }catch(e){ lightStage(1,"PDF error",true); toast("PDF failed: "+e.message, true); }
+  BUSY=false; btn.disabled=false; btn.textContent="⚡ Run through guard";
+  el("pdffile").value="";
+}
 function toast(msg, err){ const t=document.getElementById("toast"); t.textContent=msg; t.className="toast"+(err?" err":""); t.style.display="block"; setTimeout(()=>t.style.display="none", 3500); }
 function el(id){ return document.getElementById(id); }
 
@@ -197,38 +211,38 @@ async function submit(){
   lightStage(1,"scanning unicode…");
   try{
     const r=await fetch("/process",{method:"POST",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({channel:el("channel").value,text:text,source:"console"})});
+      body:JSON.stringify({channel:"memo",text:text,source:"console"})});
     const j=await r.json();
     LAST=j;
-    const sig=(j.proof&&j.proof.payload.signals)||[];
-    lightStage(1, sig.length? "⚠ "+sig.length+" signal(s)" : "clean ✓", sig.length>0);
-
-    const p=j.plan||{};
-    lightStage(2, p.intent? p.intent+(p.amount? " · ₹"+Number(p.amount).toLocaleString("en-IN"):"") : "no plan", false);
-
-    const v=j.verdict;
-    lightStage(3, v+" — "+(sig[0]||"grounded"), v!=="OK");
-
-    const ex=j.execution||{};
-    lightStage(4, (ex.status||"—")+(ex.detail? " · ":""), v==="BLOCK");
-    if(ex.detail) el("d4").textContent=ex.status+" · "+ex.detail;
-
-    // verdict panel
-    const b=el("badge"); b.textContent=v; b.className="badge v-"+v;
-    el("ms").textContent=j.timing_ms.total;
-    el("pid").textContent=j.proof? j.proof.proof_id:"–";
-    el("verdict").style.display="block";
-    if(p.amount||p.beneficiary){
-      el("plan").style.display="block";
-      el("plan").innerHTML="plan: <b>"+p.intent+"</b>"+(p.amount? " · <b>₹"+Number(p.amount).toLocaleString("en-IN")+"</b>":"")+(p.beneficiary? " → <b>"+p.beneficiary+"</b>":"")+(p.account_hint? " · a/c <b>"+p.account_hint+"</b>":"");
-    } else el("plan").style.display="none";
-    el("reasons").innerHTML=(j.reasons||[]).slice(0,6).map(x=>"<li>"+x+"</li>").join("");
-    el("chips").innerHTML=sig.map(s=>"<span class='chip'>"+s+"</span>").join("");
-    el("proofLine").innerHTML = j.proof? ("proof hash-chain: <span class='hashy'>"+j.proof.chain_hash.slice(0,26)+"…</span> — tamper with it at /docs → POST /verify") : "";
-    if(v==="REVIEW") el("reviewActions").style.display="flex";
+    renderVerdict(j, null);
     refresh();
   }catch(e){ lightStage(1,"network error",true); toast("Request failed — is the server up?", true); }
   BUSY=false; btn.disabled=false; btn.textContent="⚡ Run through guard";
+}
+
+function renderVerdict(j, label){
+  const sig=(j.proof&&j.proof.payload.signals)||[];
+  lightStage(1, sig.length? "⚠ "+sig.length+" signal(s)" : "clean ✓", sig.length>0);
+  const p=j.plan||{};
+  lightStage(2, p.intent? p.intent+(p.amount? " · ₹"+Number(p.amount).toLocaleString("en-IN"):"") : "no plan", false);
+  const v=j.verdict;
+  lightStage(3, v+" — "+(sig[0]||"grounded"), v!=="OK");
+  const ex=j.execution||{};
+  lightStage(4, (ex.status||"—"), v==="BLOCK");
+  if(ex.detail) el("d4").textContent=ex.status+" · "+ex.detail;
+
+  const b=el("badge"); b.textContent=(label? label+" — ":"")+v; b.className="badge v-"+v;
+  el("ms").textContent=j.timing_ms.total;
+  el("pid").textContent=j.proof? j.proof.proof_id:"–";
+  el("verdict").style.display="block";
+  if(p.amount||p.beneficiary){
+    el("plan").style.display="block";
+    el("plan").innerHTML="plan: <b>"+p.intent+"</b>"+(p.amount? " · <b>₹"+Number(p.amount).toLocaleString("en-IN")+"</b>":"")+(p.beneficiary? " → <b>"+p.beneficiary+"</b>":"")+(p.account_hint? " · a/c <b>"+p.account_hint+"</b>":"");
+  } else el("plan").style.display="none";
+  el("reasons").innerHTML=(j.reasons||[]).slice(0,6).map(x=>"<li>"+x+"</li>").join("");
+  el("chips").innerHTML=sig.map(s=>"<span class='chip'>"+s+"</span>").join("");
+  el("proofLine").innerHTML = j.proof? ("proof hash-chain: <span class='hashy'>"+j.proof.chain_hash.slice(0,26)+"…</span>") : "";
+  if(v==="REVIEW") el("reviewActions").style.display="flex";
 }
 
 async function decide(d){
@@ -268,7 +282,6 @@ async function refresh(){
       const cls=st==="executed"?"executed":st==="blocked"?"blocked":st==="rolled back"?"already":"review";
       return "<div class='tx'><span class='st "+cls+"'>"+st+"</span><span class='who'>"+(t.beneficiary||t.request_id)+"</span>"+
         "<span class='amt'>"+(t.amount!=null? "₹"+Number(t.amount).toLocaleString("en-IN"):"—")+"</span>"+
-        (t.status==="executed"&&!t.rolled_back? "<button class='rb' onclick='rollback(\""+t.execution_id+"\",this)'>↩ rollback</button>":"")+
         "</div>";
     }).join("") || "<div class='hint'>no transactions yet</div>";
   }catch(e){ el("svc").textContent="unreachable"; el("dot").style.background="var(--block)"; }
